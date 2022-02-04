@@ -156,13 +156,16 @@ def main():
     # change the way we input the dimensions of RBM to suit the experiment purpose, x h
     parser.add_argument('--RBM_dim', type=int, nargs=2)
 
+
     parser.add_argument('--maximize_power', action="store_true")
     parser.add_argument('--maximize_adj_mean', action="store_true")
     parser.add_argument('--val_power', action="store_true")
     parser.add_argument('--val_adj_mean', action="store_true")
+    parser.add_argument('--dropout', action="store_true")
+
 
     parser.add_argument('--alpha', type=float, default=.05)
-
+    parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--save', type=str, default='temp')
 
     parser.add_argument('--num_const', type=float, default=1e-6)
@@ -196,7 +199,9 @@ def main():
     args = parser.parse_args()
     device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
 
-
+    #print("The RBM dimension is {} and {}.".format(args.RBM_dim[0], args.RBM_dim[1]))
+    dim_x = args.RBM_dim[0]
+    dim_h = args.RBM_dim[1]
 
     # set seed for the reproduction purpose
     torch.manual_seed(args.seed)
@@ -204,33 +209,33 @@ def main():
         torch.cuda.manual_seed_all(args.seed)
 
     if args.test == "gaussian-laplace":
-        mu = torch.zeros((args.dim_x,))
-        std = torch.ones((args.dim_x,))
+        mu = torch.zeros((dim_x,))
+        std = torch.ones((dim_x,))
         p_dist = Gaussian(mu, std)
         q_dist = Laplace(mu, std)
     elif args.test == "laplace-gaussian":
-        mu = torch.zeros((args.dim_x,))
-        std = torch.ones((args.dim_x,))
+        mu = torch.zeros((dim_x,))
+        std = torch.ones((dim_x,))
         q_dist = Gaussian(mu, std)
         p_dist = Laplace(mu, std / (2 ** .5))
     elif args.test == "gaussian-pert":
-        mu = torch.zeros((args.dim_x,))
-        std = torch.ones((args.dim_x,))
+        mu = torch.zeros((dim_x,))
+        std = torch.ones((dim_x,))
         p_dist = Gaussian(mu, std)
         q_dist = Gaussian(mu + torch.randn_like(mu) * args.sigma_pert, std)
     elif args.test == "rbm-pert1":
-        B = randb((args.dim_x, args.dim_h)) * 2. - 1.
-        c = torch.randn((1, args.dim_h))
-        b = torch.randn((1, args.dim_x))
+        B = randb((dim_x, dim_h)) * 2. - 1.
+        c = torch.randn((1, dim_h))
+        b = torch.randn((1, dim_x))
 
         p_dist = GaussianBernoulliRBM(B, b, c)
         B2 = B.clone()
         B2[0, 0] += torch.randn_like(B2[0, 0]) * args.sigma_pert
         q_dist = GaussianBernoulliRBM(B2, b, c)
     else:  # args.test == "rbm-pert"
-        B = randb((args.dim_x, args.dim_h)) * 2. - 1.
-        c = torch.randn((1, args.dim_h))
-        b = torch.randn((1, args.dim_x))
+        B = randb((dim_x, dim_h)) * 2. - 1.
+        c = torch.randn((1, dim_h))
+        b = torch.randn((1, dim_x))
 
         p_dist = GaussianBernoulliRBM(B, b, c)
         q_dist = GaussianBernoulliRBM(B + torch.randn_like(B) * args.sigma_pert, b, c)
@@ -246,7 +251,7 @@ def main():
     data_test = data_rest[args.n_val:].requires_grad_()
     assert data_test.size(0) == args.n_test
 
-    critic = networks.SmallMLP(args.dim_x, n_out=args.dim_x, n_hid=300, dropout=args.dropout)
+    critic = networks.SmallMLP(dim_x, n_out=dim_x, n_hid=300, dropout=args.dropout)
     optimizer = optim.Adam(critic.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     def stein_discrepency(x, exact=False, sq_flag = True):
@@ -257,7 +262,7 @@ def main():
             logq_u = q_dist(x)
             sq = keep_grad(logq_u.sum(), x)
         fx = critic(x)
-        if args.dim_x == 1:
+        if dim_x == 1:
             fx = fx[:, None]
 
         if sq_flag:
@@ -347,7 +352,7 @@ def main():
 
         # TODO: evaluate the equation 3 here
         id_stats, _ = stein_discrepency(data_test, sq_flag=False)
-        id_test_statistic = id_stats.mean() / (id_stats.std() + args.num_const) * (args.n_test)**0.5
+        id_test_statistic = id_stats.mean() / (id_stats.std() + args.num_const) * args.n_iters ** 0.5
         print("The test statistic for validating equation 3 is {}".format(id_test_statistic))
         id_threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
         if (id_test_statistic > id_threshold) or (id_test_statistic < (-1)*id_threshold):
@@ -394,7 +399,7 @@ def main():
         assert data_test.size(0) == args.n_test
 
         # train the critic again with the new data sample
-        critic = networks.SmallMLP(args.dim_x, n_out=args.dim_x, n_hid=300, dropout=args.dropout)
+        critic = networks.SmallMLP(dim_x, n_out=dim_x, n_hid=300, dropout=args.dropout)
         optimizer = optim.Adam(critic.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         critic.train()
 
@@ -409,7 +414,7 @@ def main():
     result = dict()
     result.update({
         "sigma_pert": args.sigma_pert,
-        "l2_penalty": args.l2_penalty,
+        "l2_penalty": args.l2,
         "RBM_dim": args.RBM_dim,
         "GoF_reject_rate": reject_rate,
         "id_reject_rate": reject_id_rate

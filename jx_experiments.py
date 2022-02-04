@@ -19,7 +19,7 @@ def main(taskid):
 
     os.system("python3 main.py "
               "--log_freq 1000 "
-              "--niters 1000 "
+              "--n_iters 1000 "
               "--sigma_pert %s "
               "--l2 %s "
               "--RBM_dim %s "
