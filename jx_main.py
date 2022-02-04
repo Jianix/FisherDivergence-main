@@ -148,7 +148,7 @@ def main():
     parser.add_argument('--test', choices=['gaussian-laplace', 'laplace-gaussian',
                                            'gaussian-pert', 'rbm-pert', 'rbm-pert1'], type=str)
 
-    parser.add_argument('--MCs', type=int, default=1)
+
     # add the perturbation level as input parameter, default = 0.02
     parser.add_argument('--sigma_pert', type=float, default=.02)
     # the lambda penalty term
