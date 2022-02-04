@@ -194,7 +194,7 @@ def main():
     # the number of iterations for each pair of values of lambda and perturbation rate
     # this is used as the denominator for calculating the rejection rate
     # when varying the lambda and perturb rate
-    parser.add_argument('--n_rej_iter', type=int, default=100)
+    parser.add_argument('--n_rej_iter', type=int, default=50)
 
     args = parser.parse_args()
 
