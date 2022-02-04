@@ -353,7 +353,7 @@ def main():
         # TODO: evaluate the equation 3 here
         id_stats, _ = stein_discrepency(data_test, sq_flag=False)
         id_test_statistic = id_stats.mean() / (id_stats.std() + args.num_const) * args.n_iters ** 0.5
-        print("The test statistic for validating equation 3 is {}".format(id_test_statistic))
+        #print("The test statistic for validating equation 3 is {}".format(id_test_statistic))
         id_threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
         if (id_test_statistic > id_threshold) or (id_test_statistic < (-1)*id_threshold):
             # then by the t-test our null hypothesis (equation 3) is rejected
@@ -374,15 +374,15 @@ def main():
             print("Now the total number of rejection is {}".format(reject_times))
 
 
-        try_make_dirs(os.path.dirname(args.save))
-        with open(args.save, 'w') as f:
-            f.write(str(test_stat) + '\n')
-            if (test_stat > threshold) or (test_stat < (-1)*threshold):
-                print("{} > {}, rejct Null".format(test_stat, threshold))
-                f.write("reject")
-            else:
-                print("{} <= {}, accept Null".format(test_stat, threshold))
-                f.write("accept")
+        # try_make_dirs(os.path.dirname(args.save))
+        # with open(args.save, 'w') as f:
+        #     f.write(str(test_stat) + '\n')
+        #     if (test_stat > threshold) or (test_stat < (-1)*threshold):
+        #         print("{} > {}, rejct Null".format(test_stat, threshold))
+        #         f.write("reject")
+        #     else:
+        #         print("{} <= {}, accept Null".format(test_stat, threshold))
+        #         f.write("accept")
 
 
         # reset the lists and best value, have the critic and optimizer reseted as well
