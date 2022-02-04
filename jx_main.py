@@ -198,48 +198,194 @@ def main():
 
 
 
-    for mc in range(1, args.MCs + 1):
-        # set seed for the reproduction purpose
-        torch.manual_seed(args.seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(args.seed)
+    # set seed for the reproduction purpose
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
 
-        if args.test == "gaussian-laplace":
-            mu = torch.zeros((args.dim_x,))
-            std = torch.ones((args.dim_x,))
-            p_dist = Gaussian(mu, std)
-            q_dist = Laplace(mu, std)
-        elif args.test == "laplace-gaussian":
-            mu = torch.zeros((args.dim_x,))
-            std = torch.ones((args.dim_x,))
-            q_dist = Gaussian(mu, std)
-            p_dist = Laplace(mu, std / (2 ** .5))
-        elif args.test == "gaussian-pert":
-            mu = torch.zeros((args.dim_x,))
-            std = torch.ones((args.dim_x,))
-            p_dist = Gaussian(mu, std)
-            q_dist = Gaussian(mu + torch.randn_like(mu) * args.sigma_pert, std)
-        elif args.test == "rbm-pert1":
-            B = randb((args.dim_x, args.dim_h)) * 2. - 1.
-            c = torch.randn((1, args.dim_h))
-            b = torch.randn((1, args.dim_x))
+    if args.test == "gaussian-laplace":
+        mu = torch.zeros((args.dim_x,))
+        std = torch.ones((args.dim_x,))
+        p_dist = Gaussian(mu, std)
+        q_dist = Laplace(mu, std)
+    elif args.test == "laplace-gaussian":
+        mu = torch.zeros((args.dim_x,))
+        std = torch.ones((args.dim_x,))
+        q_dist = Gaussian(mu, std)
+        p_dist = Laplace(mu, std / (2 ** .5))
+    elif args.test == "gaussian-pert":
+        mu = torch.zeros((args.dim_x,))
+        std = torch.ones((args.dim_x,))
+        p_dist = Gaussian(mu, std)
+        q_dist = Gaussian(mu + torch.randn_like(mu) * args.sigma_pert, std)
+    elif args.test == "rbm-pert1":
+        B = randb((args.dim_x, args.dim_h)) * 2. - 1.
+        c = torch.randn((1, args.dim_h))
+        b = torch.randn((1, args.dim_x))
 
-            p_dist = GaussianBernoulliRBM(B, b, c)
-            B2 = B.clone()
-            B2[0, 0] += torch.randn_like(B2[0, 0]) * args.sigma_pert
-            q_dist = GaussianBernoulliRBM(B2, b, c)
-        else:  # args.test == "rbm-pert"
-            B = randb((args.dim_x, args.dim_h)) * 2. - 1.
-            c = torch.randn((1, args.dim_h))
-            b = torch.randn((1, args.dim_x))
+        p_dist = GaussianBernoulliRBM(B, b, c)
+        B2 = B.clone()
+        B2[0, 0] += torch.randn_like(B2[0, 0]) * args.sigma_pert
+        q_dist = GaussianBernoulliRBM(B2, b, c)
+    else:  # args.test == "rbm-pert"
+        B = randb((args.dim_x, args.dim_h)) * 2. - 1.
+        c = torch.randn((1, args.dim_h))
+        b = torch.randn((1, args.dim_x))
 
-            p_dist = GaussianBernoulliRBM(B, b, c)
-            q_dist = GaussianBernoulliRBM(B + torch.randn_like(B) * args.sigma_pert, b, c)
-
+        p_dist = GaussianBernoulliRBM(B, b, c)
+        q_dist = GaussianBernoulliRBM(B + torch.randn_like(B) * args.sigma_pert, b, c)
 
 
 
-        import numpy as np
+
+    import numpy as np
+    data = p_dist.sample(args.n_train + args.n_val + args.n_test).detach()
+    data_train = data[:args.n_train]
+    data_rest = data[args.n_train:]
+    data_val = data_rest[:args.n_val].requires_grad_()
+    data_test = data_rest[args.n_val:].requires_grad_()
+    assert data_test.size(0) == args.n_test
+
+    critic = networks.SmallMLP(args.dim_x, n_out=args.dim_x, n_hid=300, dropout=args.dropout)
+    optimizer = optim.Adam(critic.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+
+    def stein_discrepency(x, exact=False, sq_flag = True):
+        if "rbm" in args.test:
+            sq = q_dist.score_function(x)
+            sp = p_dist.score_function(x)
+        else:
+            logq_u = q_dist(x)
+            sq = keep_grad(logq_u.sum(), x)
+        fx = critic(x)
+        if args.dim_x == 1:
+            fx = fx[:, None]
+
+        if sq_flag:
+            sq_fx = (sq * fx).sum(-1)
+        else:
+            sq_fx = (sp * fx).sum(-1)
+
+        if exact:
+            tr_dfdx = exact_jacobian_trace(fx, x)
+        else:
+            tr_dfdx = approx_jacobian_trace(fx, x)
+
+        norms = (fx * fx).sum(1)
+        stats = (sq_fx + tr_dfdx)
+        return stats, norms
+
+    # training phase
+    best_val = -np.inf
+    validation_metrics = []
+    test_statistics = []
+    critic.train()
+
+    # add the reject accumulation variable here to count the number of times with rejecting the null
+    reject_times: int = 0
+
+    # add the reject accumulation variable for testing equation 3
+    reject_id_times : int = 0
+
+    for i in range(args.n_rej_iter):
+
+        for itr in range(args.n_iters):
+            optimizer.zero_grad()
+            x = sample_batch(data_train, args.batch_size)
+            x = x.to(device)
+            x.requires_grad_()
+
+            stats, norms = stein_discrepency(x)
+            mean, std = stats.mean(), stats.std()
+            l2_penalty = norms.mean() * args.l2
+
+            if args.maximize_power:
+                loss = -1. * mean / (std + args.num_const) + l2_penalty
+            elif args.maximize_adj_mean:
+                loss = -1. * mean + std + l2_penalty
+            else:
+                # go to this branch by default if not put in any argument
+                loss = -1. * mean + l2_penalty
+
+            loss.backward()
+            optimizer.step()
+
+            if itr % args.log_freq == 0:
+                print("Iter {}, Loss = {}, Mean = {}, STD = {}, L2 {}".format(itr,
+                                                                              loss.item(), mean.item(), std.item(),
+                                                                              l2_penalty.item()))
+
+            if itr % args.val_freq == 0:
+                critic.eval()
+                val_stats, _ = stein_discrepency(data_val, exact=True)
+                test_stats, _ = stein_discrepency(data_test, exact=True)
+                print("Val: {} +/- {}".format(val_stats.mean().item(), val_stats.std().item()))
+                print("Test: {} +/- {}".format(test_stats.mean().item(), test_stats.std().item()))
+
+                if args.val_power:
+                    validation_metric = val_stats.mean() / (val_stats.std() + args.num_const)
+                elif args.val_adj_mean:
+                    validation_metric = val_stats.mean() - val_stats.std()
+                else:
+                    validation_metric = val_stats.mean()
+
+                test_statistic = test_stats.mean() / (test_stats.std() + args.num_const)
+
+                if validation_metric > best_val:
+                    print("Iter {}, Validation Metric = {} > {}, Test Statistic = {}, Current Best!".format(itr,
+                                                                                                            validation_metric.item(),
+                                                                                                            best_val,
+                                                                                                            test_statistic.item()))
+                    best_val = validation_metric.item()
+                else:
+                    print("Iter {}, Validation Metric = {}, Test Statistic = {}, Not best {}".format(itr,
+                                                                                                     validation_metric.item(),
+                                                                                                     test_statistic.item(),
+                                                                                                     best_val))
+                validation_metrics.append(validation_metric.item())
+                test_statistics.append(test_statistic)
+                critic.train()
+
+        # TODO: evaluate the equation 3 here
+        id_stats, _ = stein_discrepency(data_test, sq_flag=False)
+        id_test_statistic = id_stats.mean() / (id_stats.std() + args.num_const) * (args.n_test)**0.5
+        print("The test statistic for validating equation 3 is {}".format(id_test_statistic))
+        id_threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
+        if (id_test_statistic > id_threshold) or (id_test_statistic < (-1)*id_threshold):
+            # then by the t-test our null hypothesis (equation 3) is rejected
+            reject_id_times += 1
+
+
+
+        best_ind = np.argmax(validation_metrics)
+        best_test = test_statistics[best_ind]
+
+        print("Best val is {}, best test is {}".format(best_val, best_test))
+        test_stat = best_test * args.n_test ** .5
+        threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
+
+        if (test_stat > threshold) or (test_stat < (-1)*threshold):
+            # reject accumulation variable +1
+            reject_times += 1
+            print("Now the total number of rejection is {}".format(reject_times))
+
+
+        try_make_dirs(os.path.dirname(args.save))
+        with open(args.save, 'w') as f:
+            f.write(str(test_stat) + '\n')
+            if (test_stat > threshold) or (test_stat < (-1)*threshold):
+                print("{} > {}, rejct Null".format(test_stat, threshold))
+                f.write("reject")
+            else:
+                print("{} <= {}, accept Null".format(test_stat, threshold))
+                f.write("accept")
+
+
+        # reset the lists and best value, have the critic and optimizer reseted as well
+        best_val = -np.inf
+        validation_metrics.clear()
+        test_statistics.clear()
+
+        # resample the data each time in order to catch the sampling variation
         data = p_dist.sample(args.n_train + args.n_val + args.n_test).detach()
         data_train = data[:args.n_train]
         data_rest = data[args.n_train:]
@@ -247,178 +393,30 @@ def main():
         data_test = data_rest[args.n_val:].requires_grad_()
         assert data_test.size(0) == args.n_test
 
+        # train the critic again with the new data sample
         critic = networks.SmallMLP(args.dim_x, n_out=args.dim_x, n_hid=300, dropout=args.dropout)
         optimizer = optim.Adam(critic.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-
-        def stein_discrepency(x, exact=False, sq_flag = True):
-            if "rbm" in args.test:
-                sq = q_dist.score_function(x)
-                sp = p_dist.score_function(x)
-            else:
-                logq_u = q_dist(x)
-                sq = keep_grad(logq_u.sum(), x)
-            fx = critic(x)
-            if args.dim_x == 1:
-                fx = fx[:, None]
-
-            if sq_flag:
-                sq_fx = (sq * fx).sum(-1)
-            else:
-                sq_fx = (sp * fx).sum(-1)
-
-            if exact:
-                tr_dfdx = exact_jacobian_trace(fx, x)
-            else:
-                tr_dfdx = approx_jacobian_trace(fx, x)
-
-            norms = (fx * fx).sum(1)
-            stats = (sq_fx + tr_dfdx)
-            return stats, norms
-
-        # training phase
-        best_val = -np.inf
-        validation_metrics = []
-        test_statistics = []
         critic.train()
 
-        # add the reject accumulation variable here to count the number of times with rejecting the null
-        reject_times: int = 0
 
-        # add the reject accumulation variable for testing equation 3
-        reject_id_times : int = 0
+    # compute the rejection rate here using reject_times / total_number_experiments
+    reject_rate = reject_times/args.n_rej_iter
+    reject_id_rate = reject_id_times/args.n_rej_iter
+    #print("{} experiments have been run. "
+    #      "The current rejection rate for goodness-of-fit test is {}. "
+    #      "And the rejection rate for validating equation 3 is {}.".format(args.n_rej_iter, reject_rate,reject_id_rate))
 
-        for i in range(args.n_rej_iter):
+    result = dict()
+    result.update({
+        "sigma_pert": args.sigma_pert,
+        "l2_penalty": args.l2_penalty,
+        "RBM_dim": args.RBM_dim,
+        "GoF_reject_rate": reject_rate,
+        "id_reject_rate": reject_id_rate
+    })
 
-            for itr in range(args.n_iters):
-                optimizer.zero_grad()
-                x = sample_batch(data_train, args.batch_size)
-                x = x.to(device)
-                x.requires_grad_()
-
-                stats, norms = stein_discrepency(x)
-                mean, std = stats.mean(), stats.std()
-                l2_penalty = norms.mean() * args.l2
-
-                if args.maximize_power:
-                    loss = -1. * mean / (std + args.num_const) + l2_penalty
-                elif args.maximize_adj_mean:
-                    loss = -1. * mean + std + l2_penalty
-                else:
-                    # go to this branch by default if not put in any argument
-                    loss = -1. * mean + l2_penalty
-
-                loss.backward()
-                optimizer.step()
-
-                if itr % args.log_freq == 0:
-                    print("Iter {}, Loss = {}, Mean = {}, STD = {}, L2 {}".format(itr,
-                                                                                  loss.item(), mean.item(), std.item(),
-                                                                                  l2_penalty.item()))
-
-                if itr % args.val_freq == 0:
-                    critic.eval()
-                    val_stats, _ = stein_discrepency(data_val, exact=True)
-                    test_stats, _ = stein_discrepency(data_test, exact=True)
-                    print("Val: {} +/- {}".format(val_stats.mean().item(), val_stats.std().item()))
-                    print("Test: {} +/- {}".format(test_stats.mean().item(), test_stats.std().item()))
-
-                    if args.val_power:
-                        validation_metric = val_stats.mean() / (val_stats.std() + args.num_const)
-                    elif args.val_adj_mean:
-                        validation_metric = val_stats.mean() - val_stats.std()
-                    else:
-                        validation_metric = val_stats.mean()
-
-                    test_statistic = test_stats.mean() / (test_stats.std() + args.num_const)
-
-                    if validation_metric > best_val:
-                        print("Iter {}, Validation Metric = {} > {}, Test Statistic = {}, Current Best!".format(itr,
-                                                                                                                validation_metric.item(),
-                                                                                                                best_val,
-                                                                                                                test_statistic.item()))
-                        best_val = validation_metric.item()
-                    else:
-                        print("Iter {}, Validation Metric = {}, Test Statistic = {}, Not best {}".format(itr,
-                                                                                                         validation_metric.item(),
-                                                                                                         test_statistic.item(),
-                                                                                                         best_val))
-                    validation_metrics.append(validation_metric.item())
-                    test_statistics.append(test_statistic)
-                    critic.train()
-
-            # TODO: evaluate the equation 3 here
-            id_stats, _ = stein_discrepency(data_test, sq_flag=False)
-            id_test_statistic = id_stats.mean() / (id_stats.std() + args.num_const) * (args.n_test)**0.5
-            print("The test statistic for validating equation 3 is {}".format(id_test_statistic))
-            id_threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
-            if (id_test_statistic > id_threshold) or (id_test_statistic < (-1)*id_threshold):
-                # then by the t-test our null hypothesis (equation 3) is rejected
-                reject_id_times += 1
-
-
-
-            best_ind = np.argmax(validation_metrics)
-            best_test = test_statistics[best_ind]
-
-            print("Best val is {}, best test is {}".format(best_val, best_test))
-            test_stat = best_test * args.n_test ** .5
-            threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
-
-            if (test_stat > threshold) or (test_stat < (-1)*threshold):
-                # reject accumulation variable +1
-                reject_times += 1
-                print("Now the total number of rejection is {}".format(reject_times))
-
-
-            try_make_dirs(os.path.dirname(args.save))
-            with open(args.save, 'w') as f:
-                f.write(str(test_stat) + '\n')
-                if (test_stat > threshold) or (test_stat < (-1)*threshold):
-                    print("{} > {}, rejct Null".format(test_stat, threshold))
-                    f.write("reject")
-                else:
-                    print("{} <= {}, accept Null".format(test_stat, threshold))
-                    f.write("accept")
-
-
-            # reset the lists and best value, have the critic and optimizer reseted as well
-            best_val = -np.inf
-            validation_metrics.clear()
-            test_statistics.clear()
-
-            # resample the data each time in order to catch the sampling variation
-            data = p_dist.sample(args.n_train + args.n_val + args.n_test).detach()
-            data_train = data[:args.n_train]
-            data_rest = data[args.n_train:]
-            data_val = data_rest[:args.n_val].requires_grad_()
-            data_test = data_rest[args.n_val:].requires_grad_()
-            assert data_test.size(0) == args.n_test
-
-            # train the critic again with the new data sample
-            critic = networks.SmallMLP(args.dim_x, n_out=args.dim_x, n_hid=300, dropout=args.dropout)
-            optimizer = optim.Adam(critic.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-            critic.train()
-
-
-        # compute the rejection rate here using reject_times / total_number_experiments
-        reject_rate = reject_times/args.n_rej_iter
-        reject_id_rate = reject_id_times/args.n_rej_iter
-        #print("{} experiments have been run. "
-        #      "The current rejection rate for goodness-of-fit test is {}. "
-        #      "And the rejection rate for validating equation 3 is {}.".format(args.n_rej_iter, reject_rate,reject_id_rate))
-
-        result = dict()
-        result.update({
-            "sigma_pert": args.sigma_pert,
-            "l2_penalty": args.l2_penalty,
-            "RBM_dim": args.RBM_dim,
-            "GoF_reject_rate": reject_rate,
-            "id_reject_rate": reject_id_rate,
-            "mc": mc
-        })
-
-        print(result)
-        torch.save(result, '{}/result{}.pt'.format(args.save, mc))
+    print(result)
+    torch.save(result, '{}/result.pt'.format(args.save))
 
 
 if __name__ == "__main__":

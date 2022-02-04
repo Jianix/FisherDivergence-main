@@ -10,7 +10,7 @@ def main(taskid):
     hyperparameter_config = {
         'sigma_pert': [0.02, 0.04, 0.06],
         'l2_penalty': [0.1, 1, 10],
-        'RBM_dim' : ["50 40", "100 80", "200 100"],
+        'RBM_dim': ["50 40", "100 80", "200 100"],
     }
     keys, values = zip(*hyperparameter_config.items())
     hyperparameter_experiments = [dict(zip(keys, v)) for v in itertools.product(*values)]
@@ -20,10 +20,9 @@ def main(taskid):
     os.system("python3 main.py "
               "--log_freq 1000 "
               "--niters 1000 "
-              "--MCs 10 "
               "--sigma_pert %s "
               "--l2_penalty %s "
-              "--RBM_dim %s"
+              "--RBM_dim %s "
               "--save %s "
               % (
                   temp['sigma_pert'],
