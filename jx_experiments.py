@@ -18,8 +18,10 @@ def main(taskid):
     temp = hyperparameter_experiments[taskid]
 
     os.system("python3 main.py "
+              "--test rbm-pert "
               "--log_freq 1000 "
               "--n_iters 1000 "
+              "--seed 940621 "
               "--sigma_pert %s "
               "--l2 %s "
               "--RBM_dim %s "

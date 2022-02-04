@@ -23,7 +23,7 @@
 #SBATCH --mail-type=END
 
 # Use this email address:
-#SBATCH --mail-user=jianix1@unimelb.edu.au
+#SBATCH --mail-user=jianix1@student.unimelb.edu.au
 
 # check that the script is launched with sbatch
 if [ "x$SLURM_JOB_ID" == "x" ]; then
