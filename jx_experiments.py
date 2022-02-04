@@ -21,7 +21,7 @@ def main(taskid):
               "--log_freq 1000 "
               "--niters 1000 "
               "--sigma_pert %s "
-              "--l2_penalty %s "
+              "--l2 %s "
               "--RBM_dim %s "
               "--save %s "
               % (
