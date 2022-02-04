@@ -197,7 +197,10 @@ def main():
     parser.add_argument('--n_rej_iter', type=int, default=100)
 
     args = parser.parse_args()
-    device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
+
+    # hard set the device to CPU
+    #device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cpu")
 
     #print("The RBM dimension is {} and {}.".format(args.RBM_dim[0], args.RBM_dim[1]))
     dim_x = args.RBM_dim[0]
