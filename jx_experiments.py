@@ -8,7 +8,7 @@ def main(taskid):
     taskid = int(taskid[0])
 
     hyperparameter_config = {
-        'sigma_pert': [0.02, 0.04, 0.06],
+        'sigma_pert': [0.00, 0.02, 0.04, 0.06],
         'l2_penalty': [0.1, 1, 10],
         'RBM_dim': ["50 40", "100 80", "200 100"],
     }

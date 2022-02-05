@@ -3,7 +3,6 @@
 # The name of the job:
 #SBATCH --job-name="fisher"
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
 
 #SBATCH --mem=5G
 
@@ -11,7 +10,7 @@
 #SBATCH --time=0-48:0:00
 
 # Batch arrays
-#SBATCH --array=0-26
+#SBATCH --array=0-35
 
 # Send yourself an email when the job:
 # aborts abnormally (fails)
