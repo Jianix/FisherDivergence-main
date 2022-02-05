@@ -37,4 +37,4 @@ module load fosscuda/2020b
 module load pytorch/1.9.0-python-3.8.6
 module load matplotlib
 module load tqdm
-MKL_THREADING_LAYER=CPU python3 jx_experiments.py ${SLURM_ARRAY_TASK_ID}
+jx_experiments.py ${SLURM_ARRAY_TASK_ID}
