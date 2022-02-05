@@ -377,7 +377,7 @@ def main():
             print("Now the total number of rejection is {}".format(reject_times))
 
 
-        # try_make_dirs(os.path.dirname(args.save))
+         try_make_dirs(os.path.dirname(args.save))
         # with open(args.save, 'w') as f:
         #     f.write(str(test_stat) + '\n')
         #     if (test_stat > threshold) or (test_stat < (-1)*threshold):
