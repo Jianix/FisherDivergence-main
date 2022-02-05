@@ -2,9 +2,8 @@
 
 # The name of the job:
 #SBATCH --job-name="fisher"
-#SBATCH -p gpgpu
-#SBATCH --gres=gpu:p100:1
-#SBATCH --qos=gpgpuresplat
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
 
 #SBATCH --mem=5G
 
@@ -39,4 +38,4 @@ module load fosscuda/2020b
 module load pytorch/1.9.0-python-3.8.6
 module load matplotlib
 module load tqdm
-MKL_THREADING_LAYER=GNU python3 jx_experiments.py ${SLURM_ARRAY_TASK_ID}
+MKL_THREADING_LAYER=CPU python3 jx_experiments.py ${SLURM_ARRAY_TASK_ID}
