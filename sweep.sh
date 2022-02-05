@@ -37,4 +37,4 @@ module load fosscuda/2020b
 module load pytorch/1.9.0-python-3.8.6
 module load matplotlib
 module load tqdm
-jx_experiments.py ${SLURM_ARRAY_TASK_ID}
+myProgram jx_experiments.py ${SLURM_ARRAY_TASK_ID}
