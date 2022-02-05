@@ -54,7 +54,7 @@ class GaussianBernoulliRBM(nn.Module):
     def sample(self, n):
         x = torch.randn((n, self.dim_x)).to(self.B)
         h = (randb((n, self.dim_h)) * 2. - 1.).to(self.B)
-        for t in tqdm(range(self.burn_in)):
+        for t in range(self.burn_in):
             x, h = self._blocked_gibbs_next(x, h)
         x, h = self._blocked_gibbs_next(x, h)
         return x
