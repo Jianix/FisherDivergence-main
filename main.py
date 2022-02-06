@@ -199,8 +199,8 @@ def main():
     args = parser.parse_args()
 
     # hard set the device to CPU
-    #device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
-    device = torch.device("cpu")
+    device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
+    # device = torch.device("cpu")
 
     #print("The RBM dimension is {} and {}.".format(args.RBM_dim[0], args.RBM_dim[1]))
     dim_x = args.RBM_dim[0]
@@ -318,9 +318,7 @@ def main():
             optimizer.step()
 
             if itr % args.log_freq == 0:
-                print("Iter {}, Loss = {}, Mean = {}, STD = {}, L2 {}".format(itr,
-                                                                              loss.item(), mean.item(), std.item(),
-                                                                              l2_penalty.item()))
+                 print("Iter {}, Loss = {}, Mean = {}, STD = {}, L2 {}".format(itr, loss.item(), mean.item(), std.item(),l2_penalty.item()))
 
             if itr % args.val_freq == 0:
                 critic.eval()
@@ -339,16 +337,16 @@ def main():
                 test_statistic = test_stats.mean() / (test_stats.std() + args.num_const)
 
                 if validation_metric > best_val:
-                    print("Iter {}, Validation Metric = {} > {}, Test Statistic = {}, Current Best!".format(itr,
-                                                                                                            validation_metric.item(),
-                                                                                                            best_val,
-                                                                                                            test_statistic.item()))
+                    #print("Iter {}, Validation Metric = {} > {}, Test Statistic = {}, Current Best!".format(itr,validation_metric.item(),best_val,test_statistic.item()))
+
                     best_val = validation_metric.item()
                 else:
                     print("Iter {}, Validation Metric = {}, Test Statistic = {}, Not best {}".format(itr,
                                                                                                      validation_metric.item(),
                                                                                                      test_statistic.item(),
-                                                                                                     best_val))
+                                                                                                    best_val))
+
+
                 validation_metrics.append(validation_metric.item())
                 test_statistics.append(test_statistic)
                 critic.train()
@@ -356,12 +354,11 @@ def main():
         # TODO: evaluate the equation 3 here
         id_stats, _ = stein_discrepency(data_test, sq_flag=False)
         id_test_statistic = id_stats.mean() / (id_stats.std() + args.num_const) * args.n_iters ** 0.5
-        #print("The test statistic for validating equation 3 is {}".format(id_test_statistic))
+        # print("The test statistic for validating equation 3 is {}".format(id_test_statistic))
         id_threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
         if (id_test_statistic > id_threshold) or (id_test_statistic < (-1)*id_threshold):
             # then by the t-test our null hypothesis (equation 3) is rejected
             reject_id_times += 1
-
 
 
         best_ind = np.argmax(validation_metrics)
@@ -410,12 +407,13 @@ def main():
     # compute the rejection rate here using reject_times / total_number_experiments
     reject_rate = reject_times/args.n_rej_iter
     reject_id_rate = reject_id_times/args.n_rej_iter
-    #print("{} experiments have been run. "
-    #      "The current rejection rate for goodness-of-fit test is {}. "
-    #      "And the rejection rate for validating equation 3 is {}.".format(args.n_rej_iter, reject_rate,reject_id_rate))
+    print("{} experiments have been run. "
+          "The current rejection rate for goodness-of-fit test is {}. "
+          "And the rejection rate for validating equation 3 is {}.".format(args.n_rej_iter, reject_rate,reject_id_rate))
 
 
     try_make_dirs(os.path.dirname(args.save))
+
 
     result = dict()
     result.update({
