@@ -377,7 +377,7 @@ def main():
             print("Now the total number of rejection is {}".format(reject_times))
 
 
-        try_make_dirs(os.path.dirname(args.save))
+
         # with open(args.save, 'w') as f:
         #     f.write(str(test_stat) + '\n')
         #     if (test_stat > threshold) or (test_stat < (-1)*threshold):
@@ -413,6 +413,9 @@ def main():
     #print("{} experiments have been run. "
     #      "The current rejection rate for goodness-of-fit test is {}. "
     #      "And the rejection rate for validating equation 3 is {}.".format(args.n_rej_iter, reject_rate,reject_id_rate))
+
+
+    try_make_dirs(os.path.dirname(args.save))
 
     result = dict()
     result.update({

@@ -11,7 +11,7 @@ baseline_df = pd.DataFrame(columns=["sigma_pert",  "l2_penalty", "RBM_dim"])
 
 for taskid in range(taskids):
     try:
-        result = torch.load('taskid{}/result{}.pt'.format(taskid, mc), map_location=torch.device('cpu'))
+        result = torch.load('taskid{}/result.pt'.format(taskid), map_location=torch.device('cpu'))
         df.loc[len(df.index)] = list(result.values())
         baseline_df.loc[len(baseline_df.index)] = [result['sigma_pert'], result['l2_penalty'], result['RBM_dim']]
     except:
