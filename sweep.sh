@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # The name of the job:
-#SBATCH --job-name=“fisher”
+#SBATCH --job-name="fisher"
 #SBATCH --mem=50G
 
 # The maximum running time of the job in days-hours:mins:sec
