@@ -194,7 +194,7 @@ def main():
     # the number of iterations for each pair of values of lambda and perturbation rate
     # this is used as the denominator for calculating the rejection rate
     # when varying the lambda and perturb rate
-    parser.add_argument('--n_rej_iter', type=int, default=50)
+    parser.add_argument('--n_rej_iter', type=int, default=3)
 
     args = parser.parse_args()
 
@@ -412,7 +412,7 @@ def main():
           "And the rejection rate for validating equation 3 is {}.".format(args.n_rej_iter, reject_rate,reject_id_rate))
 
 
-    try_make_dirs(os.path.dirname(args.save))
+    try_make_dirs(args.save)
 
 
     result = dict()
