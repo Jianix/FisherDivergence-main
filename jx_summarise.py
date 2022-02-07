@@ -14,6 +14,7 @@ for taskid in range(taskids):
     try:
         result = torch.load('taskid{}/result.pt'.format(taskid), map_location=torch.device('cpu'))
         print(result)
+        print(result.values())
         df.loc[len(df.index)] = list(result.values())
         #baseline_df.loc[len(baseline_df.index)] = [result['sigma_pert'], result['l2_penalty']]
     except:
