@@ -148,7 +148,6 @@ def main():
     parser.add_argument('--test', choices=['gaussian-laplace', 'laplace-gaussian',
                                            'gaussian-pert', 'rbm-pert', 'rbm-pert1'], type=str)
 
-
     # add the perturbation level as input parameter, default = 0.02
     parser.add_argument('--sigma_pert', type=float, default=.02)
     # the lambda penalty term
@@ -156,13 +155,11 @@ def main():
     # change the way we input the dimensions of RBM to suit the experiment purpose, x h
     parser.add_argument('--RBM_dim', type=int, nargs=2)
 
-
     parser.add_argument('--maximize_power', action="store_true")
     parser.add_argument('--maximize_adj_mean', action="store_true")
     parser.add_argument('--val_power', action="store_true")
     parser.add_argument('--val_adj_mean', action="store_true")
     parser.add_argument('--dropout', action="store_true")
-
 
     parser.add_argument('--alpha', type=float, default=.05)
     parser.add_argument('--lr', type=float, default=1e-3)
@@ -194,7 +191,7 @@ def main():
     # the number of iterations for each pair of values of lambda and perturbation rate
     # this is used as the denominator for calculating the rejection rate
     # when varying the lambda and perturb rate
-    parser.add_argument('--n_rej_iter', type=int, default=3)
+    parser.add_argument('--n_rej_iter', type=int, default=20)
 
     args = parser.parse_args()
 
@@ -202,7 +199,7 @@ def main():
     device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
     # device = torch.device("cpu")
 
-    #print("The RBM dimension is {} and {}.".format(args.RBM_dim[0], args.RBM_dim[1]))
+    # print("The RBM dimension is {} and {}.".format(args.RBM_dim[0], args.RBM_dim[1]))
     dim_x = args.RBM_dim[0]
     dim_h = args.RBM_dim[1]
 
@@ -243,9 +240,6 @@ def main():
         p_dist = GaussianBernoulliRBM(B, b, c)
         q_dist = GaussianBernoulliRBM(B + torch.randn_like(B) * args.sigma_pert, b, c)
 
-
-
-
     import numpy as np
     data = p_dist.sample(args.n_train + args.n_val + args.n_test).detach()
     data_train = data[:args.n_train]
@@ -257,7 +251,7 @@ def main():
     critic = networks.SmallMLP(dim_x, n_out=dim_x, n_hid=300, dropout=args.dropout)
     optimizer = optim.Adam(critic.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    def stein_discrepency(x, exact=False, sq_flag = True):
+    def stein_discrepency(x, exact=False, sq_flag=True):
         if "rbm" in args.test:
             sq = q_dist.score_function(x)
             sp = p_dist.score_function(x)
@@ -292,7 +286,7 @@ def main():
     reject_times: int = 0
 
     # add the reject accumulation variable for testing equation 3
-    reject_id_times : int = 0
+    reject_id_times: int = 0
 
     for i in range(args.n_rej_iter):
 
@@ -318,7 +312,8 @@ def main():
             optimizer.step()
 
             if itr % args.log_freq == 0:
-                 print("Iter {}, Loss = {}, Mean = {}, STD = {}, L2 {}".format(itr, loss.item(), mean.item(), std.item(),l2_penalty.item()))
+                print("Iter {}, Loss = {}, Mean = {}, STD = {}, L2 {}".format(itr, loss.item(), mean.item(), std.item(),
+                                                                              l2_penalty.item()))
 
             if itr % args.val_freq == 0:
                 critic.eval()
@@ -337,29 +332,18 @@ def main():
                 test_statistic = test_stats.mean() / (test_stats.std() + args.num_const)
 
                 if validation_metric > best_val:
-                    #print("Iter {}, Validation Metric = {} > {}, Test Statistic = {}, Current Best!".format(itr,validation_metric.item(),best_val,test_statistic.item()))
+                    # print("Iter {}, Validation Metric = {} > {}, Test Statistic = {}, Current Best!".format(itr,validation_metric.item(),best_val,test_statistic.item()))
 
                     best_val = validation_metric.item()
                 else:
                     print("Iter {}, Validation Metric = {}, Test Statistic = {}, Not best {}".format(itr,
                                                                                                      validation_metric.item(),
                                                                                                      test_statistic.item(),
-                                                                                                    best_val))
-
+                                                                                                     best_val))
 
                 validation_metrics.append(validation_metric.item())
                 test_statistics.append(test_statistic)
                 critic.train()
-
-        # TODO: evaluate the equation 3 here
-        id_stats, _ = stein_discrepency(data_test, sq_flag=False)
-        id_test_statistic = id_stats.mean() / (id_stats.std() + args.num_const) * args.n_iters ** 0.5
-        # print("The test statistic for validating equation 3 is {}".format(id_test_statistic))
-        id_threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
-        if (id_test_statistic > id_threshold) or (id_test_statistic < (-1)*id_threshold):
-            # then by the t-test our null hypothesis (equation 3) is rejected
-            reject_id_times += 1
-
 
         best_ind = np.argmax(validation_metrics)
         best_test = test_statistics[best_ind]
@@ -368,22 +352,21 @@ def main():
         test_stat = best_test * args.n_test ** .5
         threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
 
-        if (test_stat > threshold) or (test_stat < (-1)*threshold):
+        if (test_stat > threshold) or (test_stat < (-1) * threshold):
             # reject accumulation variable +1
             reject_times += 1
-            print("Now the total number of rejection is {}".format(reject_times))
+            print("{} > {}, rejct Null".format(test_stat, threshold))
+        else:
+            print("{} <= {}, accept Null".format(test_stat, threshold))
 
-
-
-        # with open(args.save, 'w') as f:
-        #     f.write(str(test_stat) + '\n')
-        #     if (test_stat > threshold) or (test_stat < (-1)*threshold):
-        #         print("{} > {}, rejct Null".format(test_stat, threshold))
-        #         f.write("reject")
-        #     else:
-        #         print("{} <= {}, accept Null".format(test_stat, threshold))
-        #         f.write("accept")
-
+        # evaluate the equation 3 here
+        id_stats, _ = stein_discrepency(data_test, sq_flag=False)
+        id_test_statistic = id_stats.mean() / (id_stats.std() + args.num_const) * args.n_iters ** 0.5
+        # print("The test statistic for validating equation 3 is {}".format(id_test_statistic))
+        id_threshold = distributions.Normal(0, 1).icdf(torch.ones((1,)) * (1. - args.alpha)).item()
+        if (id_test_statistic > id_threshold) or (id_test_statistic < (-1) * id_threshold):
+            # then by the t-test our null hypothesis (equation 3) is rejected
+            reject_id_times += 1
 
         # reset the lists and best value, have the critic and optimizer reseted as well
         best_val = -np.inf
@@ -403,18 +386,15 @@ def main():
         optimizer = optim.Adam(critic.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         critic.train()
 
-
     # compute the rejection rate here using reject_times / total_number_experiments
-    reject_rate = reject_times/args.n_rej_iter
-    reject_id_rate = reject_id_times/args.n_rej_iter
+    reject_rate = reject_times / args.n_rej_iter
+    reject_id_rate = reject_id_times / args.n_rej_iter
     print("{} experiments have been run. "
           "The current rejection rate for goodness-of-fit test is {}. "
-          "And the rejection rate for validating equation 3 is {}.".format(args.n_rej_iter, reject_rate,reject_id_rate))
-
+          "And the rejection rate for validating equation 3 is {}.".format(args.n_rej_iter, reject_rate,
+                                                                           reject_id_rate))
 
     try_make_dirs(args.save)
-
-
     result = dict()
     result.update({
         "sigma_pert": args.sigma_pert,
@@ -426,7 +406,6 @@ def main():
 
     print(result)
     torch.save(result, '{}/result.pt'.format(args.save))
-
 
 
 if __name__ == "__main__":
